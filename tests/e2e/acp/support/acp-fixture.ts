@@ -12,12 +12,12 @@ import { setTimeout as delay } from "node:timers/promises"
 import { fileURLToPath } from "node:url"
 import type { ClientSideConnection } from "@agentclientprotocol/sdk"
 import * as acp from "@agentclientprotocol/sdk"
-import { onTestFailed } from "vitest"
 import {
 	type FakeOpenAiServer,
 	type FakeResponseScript,
 	startFakeOpenAiServer,
 } from "../../tui/support/fake-openai-server.js"
+import { createMcpFixture, type McpFixture, type McpFixtureOptions } from "../../tui/support/mcp-fixture.js"
 
 const REPO_ROOT = process.env.KIMCHI_REPO_ROOT
 	? resolve(process.env.KIMCHI_REPO_ROOT)
@@ -43,6 +43,7 @@ export interface AcpFixture {
 	proc: ChildProcess
 	conn: ClientSideConnection
 	client: RecordingClient
+	mcp?: McpFixture
 	/**
 	 * Resolve on process exit. Pass `{ signal }` to abort the wait — used by
 	 * `stop()` so a SIGKILL doesn't hang the teardown on the exit promise.
@@ -53,6 +54,8 @@ export interface AcpFixture {
 
 export interface AcpFixtureOptions {
 	responses: FakeResponseScript[]
+	/** Input modalities advertised by the deterministic fake model. */
+	modelInput?: ("text" | "image")[]
 	/**
 	 * Extra capabilities merged on top of the always-present fs baseline.
 	 * Defaults to `{}` (just the fs baseline — matches `verify-acp.mjs`).
@@ -71,6 +74,8 @@ export interface AcpFixtureOptions {
 	 * a custom extension that exercises those calls.
 	 */
 	extensionPath?: string
+	/** Seed the isolated Kimchi config with the shared repository-owned MCP fixture. */
+	mcp?: McpFixtureOptions
 }
 
 export interface StartAcpFixtureOptions extends AcpFixtureOptions {
@@ -201,12 +206,16 @@ function textOf(update: acp.SessionUpdate): string | undefined {
 }
 
 export async function startAcpFixture(options: StartAcpFixtureOptions): Promise<AcpFixture> {
-	const { artifactName, responses, clientCapabilities, clientMeta, extensionPath } = options
-	const fake = await startFakeOpenAiServer({ responses })
+	const { artifactName, responses, clientCapabilities, clientMeta, extensionPath, modelInput = ["text"] } = options
+	const fake = await startFakeOpenAiServer({
+		responses,
+		models: [{ slug: "basic", displayName: "Fake Basic", input: modelInput }],
+	})
 	const homeDir = mkdtempSync(join(tmpdir(), "kimchi-acp-home-"))
 	const workDir = mkdtempSync(join(tmpdir(), "kimchi-acp-work-"))
 
 	let proc: ChildProcess | null = null
+	let mcp: McpFixture | undefined
 	const abort = new AbortController()
 
 	const recordArtifact = (outcome: "pass" | "fail", error?: unknown) => {
@@ -247,13 +256,16 @@ export async function startAcpFixture(options: StartAcpFixtureOptions): Promise<
 	// Registered as soon as the fixture exists so the artifact exists even if
 	// the failure happens mid-test; harmless when no test context is active
 	// (e.g. direct use outside vitest subscriptions).
-	try {
-		onTestFailed((ctx) => {
-			recordArtifact("fail", ctx.task.result?.errors?.[0])
-		})
-	} catch (hookError) {
-		// Not inside a test context — artifacts still written on start failure.
-		process.stderr.write(`[acp-e2e] onTestFailed registration skipped: ${String(hookError).slice(0, 200)}\n`)
+	if (process.env.VITEST) {
+		try {
+			const { onTestFailed } = await import("vitest")
+			onTestFailed((ctx) => {
+				recordArtifact("fail", ctx.task.result?.errors?.[0])
+			})
+		} catch (hookError) {
+			// Not inside a test context — artifacts still written on start failure.
+			process.stderr.write(`[acp-e2e] onTestFailed registration skipped: ${String(hookError).slice(0, 200)}\n`)
+		}
 	}
 
 	try {
@@ -293,7 +305,7 @@ export async function startAcpFixture(options: StartAcpFixtureOptions): Promise<
 									id: "basic",
 									name: "Fake Basic",
 									reasoning: false,
-									input: ["text"],
+									input: modelInput,
 									contextWindow: 64_000,
 									maxTokens: 1024,
 									cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -308,6 +320,7 @@ export async function startAcpFixture(options: StartAcpFixtureOptions): Promise<
 			),
 			"utf-8",
 		)
+		mcp = options.mcp ? await createMcpFixture(agentDir, options.mcp) : undefined
 
 		// pi-coding-agent auto-loads `${agentDir}/extensions/*.js` on every session.
 		const extPath = extensionPath ?? TEST_EXTENSION_PATH
@@ -328,6 +341,7 @@ export async function startAcpFixture(options: StartAcpFixtureOptions): Promise<
 				// deterministic.
 				KIMCHI_NO_UPDATE_CHECK: "1",
 				KIMCHI_RTK_AUTO_INSTALL: "0",
+				...(mcp?.env ?? {}),
 			},
 			cwd: workDir,
 		})
@@ -377,6 +391,7 @@ export async function startAcpFixture(options: StartAcpFixtureOptions): Promise<
 			proc,
 			conn,
 			client,
+			mcp,
 			waitForExit,
 			async stop() {
 				abort.abort()
@@ -390,6 +405,7 @@ export async function startAcpFixture(options: StartAcpFixtureOptions): Promise<
 					])
 				}
 				await fake.stop()
+				await mcp?.stop().catch(() => {})
 				rmSync(homeDir, { recursive: true, force: true })
 				rmSync(workDir, { recursive: true, force: true })
 			},
@@ -398,6 +414,7 @@ export async function startAcpFixture(options: StartAcpFixtureOptions): Promise<
 		recordArtifact("fail", error)
 		if (proc && proc.exitCode === null) proc.kill("SIGKILL")
 		await fake.stop().catch(() => {})
+		await mcp?.stop().catch(() => {})
 		rmSync(homeDir, { recursive: true, force: true })
 		rmSync(workDir, { recursive: true, force: true })
 		throw error

@@ -16,6 +16,7 @@ import {
 	resolveModels,
 	startFakeOpenAiServer,
 } from "./fake-openai-server.js"
+import { createMcpFixture, type McpFixture, type McpFixtureOptions } from "./mcp-fixture.js"
 
 /** Shared terminal geometry/shell for every TUI e2e test. */
 export const TUI_TEST_CONFIG = { shell: Shell.Bash, rows: 40, columns: 120 } as const
@@ -44,6 +45,8 @@ export interface KimchiFixture {
 	agentDir: string
 	fake: FakeOpenAiServer
 	ollama?: { baseUrl: string; requests: RecordedRequest[] }
+	/** Repository-owned MCP server configured for this session, when requested. */
+	mcp?: McpFixture
 	/** Value returned by the `seedHome` option, if used; else undefined. */
 	seedResult?: unknown
 	/** Env vars returned by `seedHome`, merged into the launched process env. */
@@ -104,6 +107,8 @@ interface CreateKimchiFixtureOptions {
 	 *  completions (/v1/chat/completions) so the TUI E2E can run without a real
 	 *  `ollama serve` running. */
 	ollama?: StartFakeOllamaServerOptions
+	/** Seed the isolated Kimchi home with a repository-owned MCP server. */
+	mcp?: McpFixtureOptions
 }
 
 export async function createKimchiFixture(options: CreateKimchiFixtureOptions): Promise<KimchiFixture> {
@@ -111,6 +116,7 @@ export async function createKimchiFixture(options: CreateKimchiFixtureOptions): 
 	const ollama = options.ollama ? await startFakeOllamaServer(options.ollama) : undefined
 	const homeDir = mkdtempSync(join(tmpdir(), "kimchi-tui-home-"))
 	const workDir = mkdtempSync(join(tmpdir(), "kimchi-tui-work-"))
+	let mcp: McpFixture | undefined
 	// Tear down server + temp dirs if any setup step throws.
 	try {
 		if (options.gitInit) execFileSync("git", ["init", "-q"], { cwd: workDir })
@@ -146,13 +152,17 @@ export async function createKimchiFixture(options: CreateKimchiFixtureOptions): 
 		)
 
 		writeModelsConfig(join(agentDir, "models.json"), fake.baseUrl, options.models)
+		mcp = options.mcp ? await createMcpFixture(agentDir, options.mcp) : undefined
 
 		const rawSeed = options.seedHome?.(homeDir, workDir)
 		const seedIsResult =
 			rawSeed !== null &&
 			typeof rawSeed === "object" &&
 			("env" in (rawSeed as SeedHomeResult) || "data" in (rawSeed as SeedHomeResult))
-		const seedEnv = seedIsResult ? ((rawSeed as SeedHomeResult).env ?? {}) : {}
+		const seedEnv = {
+			...(mcp?.env ?? {}),
+			...(seedIsResult ? ((rawSeed as SeedHomeResult).env ?? {}) : {}),
+		}
 		const seedResult = seedIsResult ? (rawSeed as SeedHomeResult).data : rawSeed
 
 		return {
@@ -161,15 +171,16 @@ export async function createKimchiFixture(options: CreateKimchiFixtureOptions): 
 			agentDir,
 			fake,
 			ollama: ollama ? { baseUrl: ollama.baseUrl, requests: ollama.requests } : undefined,
+			mcp,
 			seedResult,
 			seedEnv,
 			async stop() {
-				// Run both server stops even if one throws, so a failing OpenAI
-				// fake doesn't leak an Ollama fake listening on a port.
+				// Run all server stops even if one throws so no fixture process leaks.
 				await fake.stop().catch(() => {})
 				if (ollama) {
 					await ollama.stop().catch(() => {})
 				}
+				await mcp?.stop().catch(() => {})
 				rmSync(homeDir, { recursive: true, force: true })
 				rmSync(workDir, { recursive: true, force: true })
 			},
@@ -179,6 +190,7 @@ export async function createKimchiFixture(options: CreateKimchiFixtureOptions): 
 		if (ollama) {
 			await ollama.stop().catch(() => {})
 		}
+		await mcp?.stop().catch(() => {})
 		rmSync(homeDir, { recursive: true, force: true })
 		rmSync(workDir, { recursive: true, force: true })
 		throw error
