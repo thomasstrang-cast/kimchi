@@ -199,6 +199,24 @@ function makeMockPi(): ExtensionAPI & {
 	}
 }
 
+describe("router launch configuration", () => {
+	afterEach(() => {
+		vi.clearAllMocks()
+	})
+
+	it("passes the launch-time router setting to the agent manager", () => {
+		agentsExtension(makeMockPi(), { routerEnabled: true })
+
+		expect(MockedAgentManager).toHaveBeenLastCalledWith(
+			expect.any(Function),
+			undefined,
+			expect.any(Function),
+			expect.any(Function),
+			{ routerEnabled: true },
+		)
+	})
+})
+
 describe("session_shutdown nudge race (integration)", () => {
 	beforeEach(() => {
 		vi.useFakeTimers()

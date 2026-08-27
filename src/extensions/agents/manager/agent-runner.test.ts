@@ -4,6 +4,7 @@ import { join } from "node:path"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import dapExtension from "../../dap.js"
 import omitKimchiMaxTokensExtension from "../../omit-kimchi-max-tokens.js"
+import routerExtension from "../../router/index.js"
 
 vi.mock("@earendil-works/pi-coding-agent", async () => {
 	return {
@@ -354,6 +355,24 @@ describe("runAgent — telemetry extension", () => {
 		expect(ctorArg?.extensionFactories).toContain(omitKimchiMaxTokensExtension)
 		expect(mockReadTelemetryConfig).toHaveBeenCalled()
 		expect(mockTelemetryExtension).toHaveBeenCalledWith(mockReadTelemetryConfig.mock.results[0]?.value)
+	})
+
+	it("loads the router into child sessions when it was enabled at process start", async () => {
+		const session = makeFakeSession({})
+		mockCreateAgentSession.mockResolvedValue({
+			session: session as unknown as Awaited<ReturnType<typeof createAgentSession>>["session"],
+			extensionsResult: { extensions: [], tools: [] } as unknown as Awaited<
+				ReturnType<typeof createAgentSession>
+			>["extensionsResult"],
+		})
+
+		await runAgent(ctx as unknown as Parameters<typeof runAgent>[0], "General-Purpose", "do something", {
+			pi: pi as unknown as RunOptions["pi"],
+			routerEnabled: true,
+		})
+
+		const ctorArg = mockDefaultResourceLoader.mock.calls[0]?.[0]
+		expect(ctorArg?.extensionFactories).toContain(routerExtension)
 	})
 
 	it("adds the dap extension when the persona requests debug tools", async () => {

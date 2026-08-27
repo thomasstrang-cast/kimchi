@@ -64,6 +64,22 @@ describe("AgentManager", () => {
 		expect(record.latestOutcome?.recovery_guidance).toContain("resume_subagent with purpose finalize_report")
 	})
 
+	it("propagates the launch-time router setting to local child sessions", async () => {
+		mockRunAgent.mockResolvedValueOnce({
+			responseText: "done",
+			session: { dispose: vi.fn() } as unknown as AgentSession,
+			aborted: false,
+			steered: false,
+		})
+		manager = new AgentManager(undefined, undefined, undefined, undefined, { routerEnabled: true })
+
+		await manager.spawnAndWait(fakePi(), fakeCtx(), "Explore", "inspect", {
+			description: "inspect",
+		})
+
+		expect(mockRunAgent.mock.calls[0]?.[3].routerEnabled).toBe(true)
+	})
+
 	it("threads task_ref and max_turns into the structured outcome", async () => {
 		mockRunAgent.mockResolvedValueOnce({
 			responseText: "done",

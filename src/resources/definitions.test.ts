@@ -56,6 +56,7 @@ describe("resource definitions", () => {
 		expect(extensionResources).toContain("extensions.claude-code-hook-adapter")
 		expect(extensionResources).toContain("extensions.claude-code-skills")
 		expect(extensionResources).toContain("extensions.pi-package-lookup")
+		expect(extensionResources).toContain("extensions.router")
 		expect(resources.find((resource) => resource.id === "extensions.claude-code-hook-adapter")).toMatchObject({
 			defaultEnabled: false,
 			restartRequired: true,
@@ -67,6 +68,11 @@ describe("resource definitions", () => {
 		expect(resources.find((resource) => resource.id === "extensions.pi-package-lookup")).toMatchObject({
 			defaultEnabled: false,
 			restartRequired: true,
+		})
+		expect(resources.find((resource) => resource.id === "extensions.router")).toMatchObject({
+			defaultEnabled: false,
+			restartRequired: true,
+			description: expect.stringContaining("each session and subagent"),
 		})
 	})
 

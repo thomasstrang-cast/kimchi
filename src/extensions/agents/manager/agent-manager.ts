@@ -35,6 +35,10 @@ export type OnAgentStart = (record: AgentRecord, ctx: ExtensionContext) => void
 export type OnAgentCompact = (record: AgentRecord, info: CompactionInfo) => void
 export type CompactionInfo = { reason: "manual" | "threshold" | "overflow"; tokensBefore: number }
 
+export interface AgentManagerOptions {
+	routerEnabled?: boolean
+}
+
 /** Default max concurrent background agents. */
 const DEFAULT_MAX_CONCURRENT = 4
 const DEFAULT_MAX_CONTINUATION_RESUMES = 2
@@ -140,6 +144,7 @@ export class AgentManager {
 	private onStart?: OnAgentStart
 	private onCompact?: OnAgentCompact
 	private maxConcurrent: number
+	private readonly routerEnabled: boolean
 
 	private queue: { id: string; args: SpawnArgs }[] = []
 	private runningBackground = 0
@@ -149,11 +154,13 @@ export class AgentManager {
 		maxConcurrent = DEFAULT_MAX_CONCURRENT,
 		onStart?: OnAgentStart,
 		onCompact?: OnAgentCompact,
+		options: AgentManagerOptions = {},
 	) {
 		this.onComplete = onComplete
 		this.onStart = onStart
 		this.onCompact = onCompact
 		this.maxConcurrent = maxConcurrent
+		this.routerEnabled = options.routerEnabled ?? false
 		this.cleanupInterval = setInterval(() => this.cleanup(), 60_000)
 	}
 
@@ -244,6 +251,7 @@ export class AgentManager {
 				? this._runRemote(record, prompt, options, ctx)
 				: runAgent(ctx, type, prompt, {
 						pi,
+						routerEnabled: this.routerEnabled,
 						model: options.model,
 						maxTurns: options.maxTurns,
 						tokenBudget: options.tokenBudget,

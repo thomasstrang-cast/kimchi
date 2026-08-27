@@ -42,6 +42,7 @@ export interface KimchiFixture {
 	homeDir: string
 	workDir: string
 	agentDir: string
+	providerId: string
 	fake: FakeOpenAiServer
 	ollama?: { baseUrl: string; requests: RecordedRequest[] }
 	/** Value returned by the `seedHome` option, if used; else undefined. */
@@ -72,6 +73,9 @@ export interface SeedHomeResult {
 interface CreateKimchiFixtureOptions {
 	models?: FakeModel[]
 	responses: FakeResponseScript[]
+	routerResponses?: unknown[]
+	/** Provider id used for the generated models config and CLI selection. */
+	providerId?: string
 	creditsResponses?: unknown[]
 	budgetResponses?: unknown[]
 	/** `git init` the work dir so repo-checking flows (e.g. ferment) don't prompt to init one. */
@@ -98,7 +102,7 @@ interface CreateKimchiFixtureOptions {
 	 * `data` is exposed on the fixture as `seedResult`. Returning a plain
 	 * object without this shape is treated as `data` for back-compat.
 	 */
-	seedHome?: (homeDir: string, workDir: string) => SeedHomeResult | unknown
+	seedHome?: (homeDir: string, workDir: string, fake: FakeOpenAiServer) => SeedHomeResult | unknown
 	/** When provided, start a fake Ollama server alongside the OpenAI fake. The
 	 *  server handles startup model discovery (/api/tags + /api/show) and chat
 	 *  completions (/v1/chat/completions) so the TUI E2E can run without a real
@@ -145,9 +149,10 @@ export async function createKimchiFixture(options: CreateKimchiFixtureOptions): 
 			"utf-8",
 		)
 
-		writeModelsConfig(join(agentDir, "models.json"), fake.baseUrl, options.models)
+		const providerId = options.providerId ?? FAKE_PROVIDER
+		writeModelsConfig(join(agentDir, "models.json"), fake.baseUrl, options.models, providerId)
 
-		const rawSeed = options.seedHome?.(homeDir, workDir)
+		const rawSeed = options.seedHome?.(homeDir, workDir, fake)
 		const seedIsResult =
 			rawSeed !== null &&
 			typeof rawSeed === "object" &&
@@ -159,6 +164,7 @@ export async function createKimchiFixture(options: CreateKimchiFixtureOptions): 
 			homeDir,
 			workDir,
 			agentDir,
+			providerId,
 			fake,
 			ollama: ollama ? { baseUrl: ollama.baseUrl, requests: ollama.requests } : undefined,
 			seedResult,
@@ -215,7 +221,7 @@ export function launchKimchi(
 			...envEntries,
 			"TERM=xterm-256color",
 			sh(BINARY_PATH),
-			`--provider ${FAKE_PROVIDER}`,
+			`--provider ${sh(fixture.providerId)}`,
 			`--model ${DEFAULT_MODEL.slug}`,
 			...extraArgs,
 		].join(" "),
@@ -314,13 +320,13 @@ export function sh(value: string): string {
 	return `'${value.replaceAll("'", "'\\''")}'`
 }
 
-function writeModelsConfig(path: string, baseUrl: string, models: FakeModel[] | undefined): void {
+function writeModelsConfig(path: string, baseUrl: string, models: FakeModel[] | undefined, providerId: string): void {
 	writeFileSync(
 		path,
 		JSON.stringify(
 			{
 				providers: {
-					[FAKE_PROVIDER]: {
+					[providerId]: {
 						baseUrl: `${baseUrl}/openai/v1`,
 						apiKey: "fake",
 						api: "openai-completions",

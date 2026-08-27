@@ -549,7 +549,8 @@ it("pre-populates subscription provider models in models.json before upstream lo
 			input: ["text"],
 			contextWindow: 200000,
 			maxTokens: 8192,
-			reasoning: false,
+			reasoning: true,
+			thinkingLevelMap: { minimal: "low", xhigh: "xhigh", max: "max" },
 			cost: { input: 3, output: 12, cacheRead: 0, cacheWrite: 0 },
 		},
 	] as ReturnType<typeof getModelsMock>)
@@ -591,7 +592,8 @@ it("pre-populates subscription provider models in models.json before upstream lo
 		input: ["text"],
 		contextWindow: 200000,
 		maxTokens: 8192,
-		reasoning: false,
+		reasoning: true,
+		thinkingLevelMap: { minimal: "low", xhigh: "xhigh", max: "max" },
 	})
 	syncSpy.mockRestore()
 	getModelsMock.mockReturnValue([])

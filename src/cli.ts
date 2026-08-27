@@ -98,6 +98,8 @@ import remoteRunExtension from "./extensions/remote-run/index.js"
 import reportBugExtension from "./extensions/report-bug.js"
 import requestTimingExtension from "./extensions/request-timing.js"
 import reviewWriteGuardExtension from "./extensions/review-write-guard.js"
+import { ROUTER_EXTENSION_RESOURCE_ID } from "./extensions/router/definition.js"
+import routerExtension from "./extensions/router/index.js"
 import rtkRewriteExtension from "./extensions/rtk-rewrite.js"
 import sessionMetadataExtension from "./extensions/session-metadata/index.js"
 import sessionNameExtension from "./extensions/session-name.js"
@@ -555,6 +557,9 @@ try {
 			? [terminalColorsExtension, kimchiMinimalTintsExtension, uiExtension]
 			: []
 		const effectiveSkillPaths = [...new Set([...skillPaths])]
+		const routerExtensionFactories = enabledExtensionFactories([
+			{ id: ROUTER_EXTENSION_RESOURCE_ID, factory: routerExtension },
+		] satisfies ManagedExtensionFactory[])
 		const extensionFactories = [
 			// First so its session_start handler syncs project trust onto the
 			// settings watcher before any other handler reads settings.
@@ -570,6 +575,9 @@ try {
 			...terminalUiExtensionFactories,
 			loginExtension,
 			startupAuthGate,
+			// Route before model-dependent prompt construction so the selected
+			// model receives its own orchestration instructions on the first turn.
+			...routerExtensionFactories,
 			loopGuardExtension,
 			explorationGuardExtension,
 			reviewWriteGuardExtension,
@@ -634,7 +642,10 @@ try {
 			sessionModeOnboarding,
 			tipsExtension(),
 			...enabledExtensionFactories([
-				{ id: "extensions.agents", factory: agentsExtension },
+				{
+					id: "extensions.agents",
+					factory: (pi) => agentsExtension(pi, { routerEnabled: routerExtensionFactories.length > 0 }),
+				},
 			] satisfies ManagedExtensionFactory[]),
 			helpExtension,
 			themeSelectorExtension,

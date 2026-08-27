@@ -1,6 +1,7 @@
 import { DEFAULT_BASH_TIMEOUT_SECONDS } from "../extensions/bash-default-timeout.js"
 import { CLAUDE_CODE_SKILLS_RESOURCE_ID } from "../extensions/claude-code-skills/definition.js"
 import { PI_PACKAGE_LOOKUP_RESOURCE_ID } from "../extensions/pi-package-lookup/index.js"
+import { ROUTER_EXTENSION_RESOURCE_ID } from "../extensions/router/definition.js"
 import { discoverBashHookResources } from "./bash-hook-discovery.js"
 import { discoverClaudeCodeHookResourceDefinitions } from "./claude-code-hook-resources.js"
 import { discoverPackageResources } from "./package-resources.js"
@@ -97,6 +98,15 @@ export const STATIC_RESOURCE_DEFINITIONS: readonly ResourceDefinition[] = [
 		kind: "extensions",
 		label: "Pi package lookup",
 		description: "Load packages installed by the original pi CLI.",
+		defaultEnabled: false,
+		restartRequired: true,
+	},
+	{
+		id: ROUTER_EXTENSION_RESOURCE_ID,
+		kind: "extensions",
+		label: "LLM Router",
+		description:
+			"Route the first prompt of each session and subagent to the optimal Kimchi model using the configured Kimchi credentials.",
 		defaultEnabled: false,
 		restartRequired: true,
 	},

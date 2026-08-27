@@ -95,6 +95,7 @@ export interface FakeOpenAiServer {
 interface StartFakeOpenAiServerOptions {
 	models?: FakeModel[]
 	responses: FakeResponseScript[]
+	routerResponses?: unknown[]
 	creditsResponses?: unknown[]
 	budgetResponses?: unknown[]
 }
@@ -142,6 +143,7 @@ export async function startFakeOpenAiServer(options: StartFakeOpenAiServerOption
 	}
 	const creditsQueue = [...(options.creditsResponses ?? [])]
 	const budgetQueue = [...(options.budgetResponses ?? [])]
+	const routerQueue = [...(options.routerResponses ?? [])]
 	let lastCreditsResponse: unknown
 	let lastBudgetResponse: unknown
 
@@ -163,6 +165,16 @@ export async function startFakeOpenAiServer(options: StartFakeOpenAiServerOption
 		requests.push(recorded)
 
 		try {
+			if (req.method === "POST" && req.url === "/v1/route") {
+				const response = routerQueue.shift()
+				if (response === undefined) {
+					writeJson(res, 503, { error: "No scripted router response remains" })
+				} else {
+					writeJson(res, 200, response)
+				}
+				return
+			}
+
 			if (req.method === "GET" && req.url?.startsWith("/v1/models/metadata")) {
 				writeJson(res, 200, {
 					models: models.map((model) => ({

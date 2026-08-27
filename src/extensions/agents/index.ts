@@ -717,7 +717,12 @@ function readAgentTaskRef(params: Record<string, unknown>): AgentTaskRef | undef
 	return undefined
 }
 
-export default function (pi: ExtensionAPI) {
+export interface AgentsExtensionOptions {
+	/** Launch-time resource snapshot propagated to local child sessions. */
+	routerEnabled?: boolean
+}
+
+export default function (pi: ExtensionAPI, options: AgentsExtensionOptions = {}) {
 	pi.on("message_start", (event) => {
 		if (event.message.role === "user") budgetRetryBlock = undefined
 	})
@@ -1001,6 +1006,7 @@ export default function (pi: ExtensionAPI) {
 				compactionCount: record.compactionCount,
 			})
 		},
+		{ routerEnabled: options.routerEnabled },
 	)
 	activeManager = manager
 
